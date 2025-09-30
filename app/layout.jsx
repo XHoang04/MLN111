@@ -1,9 +1,8 @@
 // app/layout.jsx
 import "./globals.css";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Be_Vietnam_Pro } from "next/font/google";
 
-const geist = Geist({ subsets: ["latin"] });
-const geistMono = Geist_Mono({ subsets: ["latin"] });
+const bevn = Be_Vietnam_Pro({ subsets: ["latin"] });
 
 export const metadata = {
   title: "My App",
@@ -12,8 +11,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className={`${geist.className} ${geistMono.className}`}>
+    <html lang="vi">
+      <body className={bevn.className}>
         {children}
       </body>
     </html>
