@@ -2,7 +2,10 @@
 import "./globals.css";
 import { Be_Vietnam_Pro } from "next/font/google";
 
-const bevn = Be_Vietnam_Pro({ subsets: ["latin"] });
+const bevn = Be_Vietnam_Pro({
+  subsets: ["latin"],
+  weight: ["400", "700"], // Regular + Bold
+});
 
 export const metadata = {
   title: "My App",
