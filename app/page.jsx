@@ -322,7 +322,7 @@ export default function BanChatConNguoi() {
 
               <div className="bg-gradient-to-br from-yellow-900/40 to-orange-900/40 border border-yellow-700/50 rounded-xl p-8">
                 <h3 className="text-2xl font-bold text-yellow-300 mb-4">❓ Câu hỏi nghiên cứu</h3>
-                <div className="space-y-3 text-gray-100">
+                <div className="space-y-3 text-yellow-100">
                   <p>• Nếu các quan hệ xã hội là nền tảng hình thành bản chất con người mà giờ đây chúng ngày càng ảo hóa, phi vật chất hóa...</p>
                   <p>• Thì bản chất con người có đang bị biến đổi tận gốc rễ?</p>
                   <p>• Liệu con người có nguy cơ đánh mất chính bản chất của mình?</p>
