@@ -8,7 +8,6 @@ export default function BanChatConNguoi() {
   const [quizAnswer, setQuizAnswer] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const EMBEDDED_API_KEY = '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';
   const [chatMessages, setChatMessages] = useState([
     { role: 'bot', text: 'Xin chào! Tôi là trợ lý Triết học được hỗ trợ bởi AI. Hãy hỏi tôi bất cứ điều gì! 🧠✨' }
   ]);
@@ -96,7 +95,7 @@ export default function BanChatConNguoi() {
 
   const callAI = async (userMessage) => {
     try {
-      const key = EMBEDDED_API_KEY?.trim();
+      const key = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
       if (!key) {
         // Nếu bạn quên dán key thì bot vẫn phản hồi hướng dẫn ngắn gọn
         return 'Bot chưa được cấu hình.';
