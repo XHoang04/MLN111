@@ -1,18 +1,81 @@
 "use client";
-
-import React, { useState, useEffect } from 'react';
-import { User, Network, AlertCircle, Lightbulb, Smartphone, Users, Brain, Link, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, Network, AlertCircle, Lightbulb, Smartphone, Users, Brain, ChevronDown, Globe, Wifi, MessageCircle, Send, X, Settings, Sparkles, Loader2 } from 'lucide-react';
 
 export default function BanChatConNguoi() {
   const [activeTab, setActiveTab] = useState('intro');
   const [scrollY, setScrollY] = useState(0);
-  const [showQuiz, setShowQuiz] = useState(false);
   const [quizAnswer, setQuizAnswer] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'bot', text: 'Xin chào! Tôi là trợ lý Triết học được hỗ trợ bởi AI. Hãy hỏi tôi bất cứ điều gì! 🧠✨' }
+  ]);
+  const EMBEDDED_API_KEY = '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';
+  const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showApiInput, setShowApiInput] = useState(false);
+  const chatEndRef = useRef(null);
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     const handleScroll = () => setScrollY(window.scrollY);
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const nodes = Array.from({ length: 50 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      radius: Math.random() * 2 + 1
+    }));
+
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      nodes.forEach((node, i) => {
+        node.x += node.vx;
+        node.y += node.vy;
+        
+        if (node.x < 0 || node.x > canvas.width) node.vx *= -1;
+        if (node.y < 0 || node.y > canvas.height) node.vy *= -1;
+        
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.6)';
+        ctx.fill();
+        
+        nodes.slice(i + 1).forEach(other => {
+          const dx = other.x - node.x;
+          const dy = other.y - node.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance < 150) {
+            ctx.beginPath();
+            ctx.moveTo(node.x, node.y);
+            ctx.lineTo(other.x, other.y);
+            ctx.strokeStyle = `rgba(239, 68, 68, ${0.2 * (1 - distance / 150)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        });
+      });
+      
+      requestAnimationFrame(animate);
+    }
+    
+    animate();
   }, []);
 
   const quizQuestion = {
@@ -25,78 +88,237 @@ export default function BanChatConNguoi() {
     ]
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-red-900 to-gray-900">
+  const quickQuestions = [
+    'Triết học Mác-Lênin là gì?',
+    'So sánh Plato và Aristotle về nhận thức',
+    'Giải thích hiện sinh chủ nghĩa',
+    'Triết học phương Đông khác gì phương Tây?',
+    'Bản chất con người theo các triết gia',
+    'Thuyết tương đối của Einstein có ý nghĩa triết học gì?'
+  ];
+
+  // --- Thay hàm callAI cũ bằng hàm này ---
+  const callAI = async (userMessage) => {
+  try {
+    const key = EMBEDDED_API_KEY?.trim();
+    if (!key) {
+      // Nếu bạn quên dán key thì bot vẫn phản hồi hướng dẫn ngắn gọn
+      return 'Bot được cấu hình.';
+    }
+
+    // System prompt: bắt buộc trả lời NGẮN GỌN (1-2 câu) và CHỈ VỀ TRIẾT HỌC.
+    const systemPrompt = `
+Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
+- Chỉ trả lời các câu hỏi liên quan tới triết học (lịch sử triết học, khái niệm, lý thuyết, so sánh trường phái, giải nghĩa trích đoạn, v.v).
+- Nếu câu hỏi không liên quan tới triết học, trả lời ngắn: "Tôi chỉ trả lời về triết học."
+- Trả lời NGẮN GỌN: 1–2 câu (không quá 2 câu) nếu hỏi định nghĩa. Rõ ràng, súc tích, trích dẫn tên tác giả khi cần.
+- Không kèm hướng dẫn kỹ thuật, code, link, hoặc nội dung dài dòng.
+`;
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`,
+        // không cần thêm HTTP-Referer / X-Title
+      },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout:free', // giữ model cũ bạn đang dùng
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage }
+        ],
+        temperature: 0.2,
+        max_tokens: 200
+      })
+    });
+
+    if (!response.ok) {
+      // Trả lỗi súc tích
+      const err = await response.text();
+      throw new Error(`API lỗi: ${response.status} ${response.statusText} - ${err}`);
+    }
+
+    const data = await response.json();
+    // Try to read the assistant text in different possible shapes
+    let content = '';
+    if (data.choices && data.choices[0]) {
+      // openrouter style
+      content = data.choices[0].message?.content ?? data.choices[0].text ?? '';
+    } else {
+      content = data.text ?? '';
+    }
+
+    content = (content || '').toString().trim();
+    if (!content) return 'Xin lỗi, API trả về rỗng.';
+
+    // Hậu xử lý: lấy tối đa 2 câu (kết thúc bởi . ! ?)
+    // Cắt theo dấu câu. Nếu không tìm thấy dấu câu, trả nguyên content nhưng rút ngắn ký tự.
+    const sentences = content.match(/[^.!?]+[.!?]?/g) || [content];
+    const short = sentences.slice(0, 2).map(s => s.trim()).join(' ').trim();
+
+    // Nếu short vẫn quá dài (ví dụ 300+ ký tự) thì cắt xuống 200 ký tự
+    if (short.length > 300) return short.slice(0, 300).trim() + '...';
+
+    // Kiểm tra nội dung không liên quan (nếu có từ khóa rõ rệt: weather, code, price...)
+    const nonPhilosophyHints = ['weather', 'price', 'stock', 'pizza', 'github', 'api', 'install', 'how to', 'docker', 'npm', 'python'];
+    const lower = short.toLowerCase();
+    if (nonPhilosophyHints.some(h => lower.includes(h))) {
+      return 'Tôi chỉ trả lời về triết học.';
+    }
+
+    return short;
+  } catch (err) {
+    // trả lời ngắn gọn khi có lỗi
+    return `Lỗi`;
+  }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading) return;
+
+    const userMsg = { role: 'user', text: inputMessage };
+    setChatMessages(prev => [...prev, userMsg]);
+    const currentInput = inputMessage;
+    setInputMessage('');
+    setIsLoading(true);
+
+    setChatMessages(prev => [...prev, { role: 'bot', text: '🤔 Đang suy nghĩ...', isTyping: true }]);
+
+    try {
+      const aiResponse = await callAI(currentInput);
       
-      {/* Animated Background Particles */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-30">
-        {[...Array(20)].map((_, i) => (
+      setChatMessages(prev => {
+        const withoutTyping = prev.filter(msg => !msg.isTyping);
+        return [...withoutTyping, { role: 'bot', text: aiResponse }];
+      });
+    } catch (error) {
+      setChatMessages(prev => {
+        const withoutTyping = prev.filter(msg => !msg.isTyping);
+        return [...withoutTyping, { 
+          role: 'bot', 
+          text: 'Xin lỗi, có lỗi xảy ra. Hãy kiểm tra API key và thử lại! 🙏' 
+        }];
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  
+
+  useEffect(() => {
+    if (chatOpen && chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, chatOpen]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-red-900 to-gray-900 relative overflow-hidden">
+      
+      <canvas 
+        ref={canvasRef}
+        className="fixed inset-0 pointer-events-none opacity-20 z-0"
+      />
+
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        {[...Array(30)].map((_, i) => (
           <div
             key={i}
-            className="absolute w-2 h-2 bg-red-400 rounded-full animate-pulse"
+            className="absolute rounded-full"
             style={{
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${2 + Math.random() * 3}s`
+              width: `${Math.random() * 6 + 2}px`,
+              height: `${Math.random() * 6 + 2}px`,
+              background: `radial-gradient(circle, rgba(239, 68, 68, ${Math.random() * 0.5 + 0.3}), transparent)`,
+              animation: `float ${Math.random() * 10 + 15}s ease-in-out infinite`,
+              animationDelay: `${Math.random() * 5}s`,
             }}
           />
         ))}
       </div>
 
-      {/* Header with parallax effect */}
       <header 
-        className="relative bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white py-16 shadow-2xl overflow-hidden"
+        className="relative bg-gradient-to-r from-red-700 via-red-600 to-red-700 text-white py-20 shadow-2xl overflow-hidden"
         style={{ transform: `translateY(${scrollY * 0.5}px)` }}
       >
-        <div className="absolute inset-0 bg-black opacity-20"></div>
-        <div className="relative max-w-5xl mx-auto px-6 text-center">
-          <div className="inline-block mb-4 animate-bounce">
-            <Brain className="w-16 h-16 mx-auto text-yellow-300" />
+        <div className="absolute inset-0 bg-black opacity-30"></div>
+        
+        <div className="absolute inset-0 opacity-10">
+          <div className="grid grid-cols-8 grid-rows-8 h-full w-full">
+            {[...Array(64)].map((_, i) => (
+              <div 
+                key={i} 
+                className="border border-white/20 animate-pulse"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              />
+            ))}
           </div>
-          <h1 className="text-5xl font-bold mb-4 drop-shadow-lg">
-            Bản chất con người trong thời đại số hóa
+        </div>
+
+        <div className="relative max-w-6xl mx-auto px-6 text-center">
+          <div className="inline-block mb-6 relative">
+            <div className="absolute inset-0 bg-yellow-400 blur-xl opacity-50 animate-pulse"></div>
+            <Brain className="w-20 h-20 mx-auto text-yellow-300 relative z-10 animate-bounce" />
+          </div>
+          
+          <h1 className="text-6xl font-bold mb-6 drop-shadow-lg">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-300 via-red-300 to-pink-300">
+              Bản chất con người
+            </span>
+            <br />
+            <span className="text-4xl">trong thời đại số hóa</span>
           </h1>
-          <p className="text-xl text-red-100 mb-6">
+          
+          <p className="text-2xl text-red-100 mb-8">
             Góc nhìn từ Triết học Mác - Lênin
           </p>
-          <div className="flex items-center justify-center space-x-4 text-sm">
-            <div className="flex items-center bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
-              <Users className="w-4 h-4 mr-2" />
-              <span>Quan hệ xã hội</span>
-            </div>
-            <div className="flex items-center bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
-              <Network className="w-4 h-4 mr-2" />
-              <span>Số hóa</span>
-            </div>
-            <div className="flex items-center bg-white/20 px-4 py-2 rounded-full backdrop-blur-sm">
-              <Smartphone className="w-4 h-4 mr-2" />
-              <span>Tha hóa</span>
-            </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm mb-8">
+            {[
+              { icon: Users, text: "Quan hệ xã hội", color: "from-blue-500 to-cyan-500" },
+              { icon: Network, text: "Số hóa", color: "from-purple-500 to-pink-500" },
+              { icon: Smartphone, text: "Tha hóa", color: "from-red-500 to-orange-500" },
+              { icon: Globe, text: "Kết nối toàn cầu", color: "from-green-500 to-emerald-500" }
+            ].map((tag, i) => {
+              const Icon = tag.icon;
+              return (
+                <div 
+                  key={i}
+                  className={`group relative flex items-center bg-gradient-to-r ${tag.color} px-6 py-3 rounded-full backdrop-blur-sm transform transition-all duration-300 hover:scale-110 hover:-translate-y-2`}
+                  onMouseEnter={() => setHoveredCard(i)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                >
+                  <Icon className={`w-5 h-5 mr-2 transition-transform ${hoveredCard === i ? 'rotate-180' : ''}`} />
+                  <span className="font-semibold">{tag.text}</span>
+                </div>
+              );
+            })}
           </div>
-          <ChevronDown className="w-8 h-8 mx-auto mt-8 animate-bounce text-yellow-300" />
+          
+          <ChevronDown className="w-10 h-10 mx-auto mt-8 animate-bounce text-yellow-300" />
         </div>
       </header>
 
-      {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-gray-900/95 backdrop-blur-md shadow-lg border-b border-red-800/30">
-        <div className="max-w-5xl mx-auto px-6">
-          <div className="flex justify-center space-x-2 py-4">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex justify-center space-x-3 py-4 flex-wrap gap-2">
             {[
-              { id: 'intro', label: 'Đặt vấn đề', icon: AlertCircle },
-              { id: 'theory', label: 'Lý thuyết', icon: Lightbulb },
-              { id: 'reality', label: 'Thực trạng', icon: Network },
-              { id: 'conclusion', label: 'Kết luận', icon: User }
+              { id: 'intro', label: 'Đặt vấn đề', icon: AlertCircle, color: 'from-red-600 to-orange-600' },
+              { id: 'theory', label: 'Lý thuyết', icon: Lightbulb, color: 'from-yellow-600 to-orange-600' },
+              { id: 'reality', label: 'Thực trạng', icon: Network, color: 'from-purple-600 to-pink-600' },
+              { id: 'conclusion', label: 'Kết luận', icon: User, color: 'from-green-600 to-emerald-600' }
             ].map(tab => {
               const Icon = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
+                  className={`group relative flex items-center px-4 md:px-6 py-3 rounded-lg font-medium transition-all duration-300 ${
                     activeTab === tab.id
-                      ? 'bg-gradient-to-r from-red-600 to-red-500 text-white shadow-lg scale-105'
-                      : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                      ? `bg-gradient-to-r ${tab.color} text-white shadow-lg scale-105`
+                      : 'text-gray-300 hover:bg-gray-800'
                   }`}
                 >
                   <Icon className="w-4 h-4 mr-2" />
@@ -108,10 +330,7 @@ export default function BanChatConNguoi() {
         </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="relative max-w-5xl mx-auto px-6 py-12">
-        
-        {/* Đặt vấn đề */}
+      <main className="relative max-w-6xl mx-auto px-6 py-12">
         {activeTab === 'intro' && (
           <div className="space-y-6 animate-slide-up">
             <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-8 border border-red-800/30">
@@ -122,62 +341,26 @@ export default function BanChatConNguoi() {
                 <h2 className="text-3xl font-bold text-white">Đặt vấn đề</h2>
               </div>
               
-              <div className="relative bg-gradient-to-r from-red-900/40 to-orange-900/40 border-l-4 border-red-500 p-8 mb-8 rounded-r-xl backdrop-blur-sm">
-                <div className="absolute -left-8 top-8 text-6xl text-red-500/30">"</div>
+              <div className="relative bg-gradient-to-r from-red-900/40 to-orange-900/40 border-l-4 border-red-500 p-8 mb-8 rounded-r-xl">
                 <p className="text-lg text-gray-100 leading-relaxed italic mb-4">
-                  Bản chất con người không phải là cái trừu tượng cố hữu của cá nhân riêng biệt, 
-                  mà là tổng hòa những mối quan hệ xã hội.
+                  "Bản chất con người không phải là cái trừu tượng cố hữu của cá nhân riêng biệt, 
+                  mà là tổng hòa những mối quan hệ xã hội."
                 </p>
-                <div className="flex items-center justify-end">
-                  <div className="bg-red-600/80 px-4 py-2 rounded-lg">
-                    <p className="text-yellow-300 font-bold">— Karl Marx</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-blue-900/30 p-6 rounded-xl border border-blue-700/30 hover:border-blue-500/50 transition-all duration-300 hover:scale-105">
-                  <Smartphone className="w-10 h-10 text-blue-400 mb-3" />
-                  <h4 className="text-white font-bold mb-2">Giao tiếp qua màn hình</h4>
-                  <p className="text-gray-300 text-sm">Nhiều hơn gặp mặt trực tiếp</p>
-                </div>
-                <div className="bg-purple-900/30 p-6 rounded-xl border border-purple-700/30 hover:border-purple-500/50 transition-all duration-300 hover:scale-105">
-                  <Users className="w-10 h-10 text-purple-400 mb-3" />
-                  <h4 className="text-white font-bold mb-2">Lao động từ xa</h4>
-                  <p className="text-gray-300 text-sm">Thay thế làm việc tập thể</p>
-                </div>
-                <div className="bg-pink-900/30 p-6 rounded-xl border border-pink-700/30 hover:border-pink-500/50 transition-all duration-300 hover:scale-105">
-                  <Network className="w-10 h-10 text-pink-400 mb-3" />
-                  <h4 className="text-white font-bold mb-2">Phiên bản số</h4>
-                  <p className="text-gray-300 text-sm">Bản thân trên không gian mạng</p>
-                </div>
+                <p className="text-right text-yellow-300 font-bold">— Karl Marx</p>
               </div>
 
               <div className="bg-gradient-to-br from-yellow-900/40 to-orange-900/40 border border-yellow-700/50 rounded-xl p-8">
-                <div className="flex items-start mb-4">
-                  <div className="text-4xl mr-4">❓</div>
-                  <h3 className="text-2xl font-bold text-yellow-300">Câu hỏi nghiên cứu</h3>
-                </div>
-                <div className="space-y-4 text-gray-100">
-                  <div className="flex items-start">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                    <p>Nếu các quan hệ xã hội là nền tảng hình thành bản chất con người mà giờ đây chúng ngày càng <span className="text-yellow-300 font-semibold">ảo hóa, phi vật chất hóa</span>...</p>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                    <p>Thì <span className="text-yellow-300 font-semibold">bản chất con người</span> có đang bị biến đổi tận gốc rễ?</p>
-                  </div>
-                  <div className="flex items-start">
-                    <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                    <p>Liệu con người có <span className="text-yellow-300 font-semibold">nguy cơ đánh mất</span> chính bản chất của mình?</p>
-                  </div>
+                <h3 className="text-2xl font-bold text-yellow-300 mb-4">❓ Câu hỏi nghiên cứu</h3>
+                <div className="space-y-3 text-gray-100">
+                  <p>• Nếu các quan hệ xã hội là nền tảng hình thành bản chất con người mà giờ đây chúng ngày càng ảo hóa, phi vật chất hóa...</p>
+                  <p>• Thì bản chất con người có đang bị biến đổi tận gốc rễ?</p>
+                  <p>• Liệu con người có nguy cơ đánh mất chính bản chất của mình?</p>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Lý thuyết */}
         {activeTab === 'theory' && (
           <div className="space-y-6 animate-slide-up">
             <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-8 border border-red-800/30">
@@ -189,142 +372,61 @@ export default function BanChatConNguoi() {
               </div>
 
               <div className="space-y-6">
-                {/* Section 1 */}
-                <div className="group bg-gradient-to-br from-blue-900/20 to-blue-800/20 p-6 rounded-xl border border-blue-700/30 hover:border-blue-500 transition-all duration-300">
-                  <div className="flex items-start mb-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-bold text-xl">1</span>
-                    </div>
-                    <h3 className="text-2xl font-bold text-blue-300">Con người và bản chất con người</h3>
-                  </div>
-                  <div className="space-y-4 ml-14">
-                    <div className="flex items-start">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                      <div>
-                        <p className="text-blue-200 font-semibold mb-1">Bản chất lịch sử - xã hội</p>
-                        <p className="text-gray-300 text-sm">Không cố định, bẩm sinh mà được hình thành và phát triển qua lịch sử</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                      <div>
-                        <p className="text-blue-200 font-semibold mb-1">Tổng hòa các mối quan hệ xã hội</p>
-                        <p className="text-gray-300 text-sm">Qua các mối quan hệ: kinh tế, chính trị, văn hóa, gia đình...</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                      <div>
-                        <p className="text-blue-200 font-semibold mb-1">Thực tiễn lao động sản xuất</p>
-                        <p className="text-gray-300 text-sm">Hoạt động cơ bản tạo nên con người, phân biệt với động vật</p>
-                      </div>
-                    </div>
+                <div className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 p-6 rounded-xl border border-blue-700/30">
+                  <h3 className="text-2xl font-bold text-blue-300 mb-4">1. Con người và bản chất con người</h3>
+                  <div className="space-y-3 ml-4">
+                    <p className="text-gray-200">• <strong>Bản chất lịch sử - xã hội:</strong> Không cố định, được hình thành qua lịch sử</p>
+                    <p className="text-gray-200">• <strong>Tổng hòa các mối quan hệ xã hội:</strong> Qua quan hệ kinh tế, chính trị, văn hóa...</p>
+                    <p className="text-gray-200">• <strong>Thực tiễn lao động:</strong> Hoạt động cơ bản tạo nên con người</p>
                   </div>
                 </div>
 
-                {/* Section 2 */}
-                <div className="group bg-gradient-to-br from-red-900/20 to-red-800/20 p-6 rounded-xl border border-red-700/30 hover:border-red-500 transition-all duration-300">
-                  <div className="flex items-start mb-4">
-                    <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-bold text-xl">2</span>
-                    </div>
-                    <h3 className="text-2xl font-bold text-red-300">Hiện tượng tha hóa con người</h3>
-                  </div>
-                  <div className="space-y-4 ml-14">
-                    <div className="bg-red-950/50 p-4 rounded-lg">
-                      <p className="text-red-200 font-semibold mb-2">💡 Khái niệm</p>
-                      <p className="text-gray-300 text-sm">Sản phẩm lao động, hoạt động lao động trở thành cái xa lạ, đối lập với con người</p>
-                    </div>
-                    <div className="bg-red-950/50 p-4 rounded-lg">
-                      <p className="text-red-200 font-semibold mb-2">🔍 Nguyên nhân</p>
-                      <p className="text-gray-300 text-sm">Chế độ tư hữu, phân công lao động bất hợp lý trong xã hội có giai cấp</p>
-                    </div>
-                    <div className="bg-red-950/50 p-4 rounded-lg">
-                      <p className="text-red-200 font-semibold mb-2">⚠️ Biểu hiện</p>
-                      <p className="text-gray-300 text-sm">Con người bị chi phối bởi sản phẩm mình tạo ra, mất quyền tự do sáng tạo</p>
-                    </div>
+                <div className="bg-gradient-to-br from-red-900/20 to-red-800/20 p-6 rounded-xl border border-red-700/30">
+                  <h3 className="text-2xl font-bold text-red-300 mb-4">2. Hiện tượng tha hóa con người</h3>
+                  <div className="space-y-3 ml-4">
+                    <p className="text-gray-200">• <strong>Khái niệm:</strong> Sản phẩm lao động trở thành xa lạ với con người</p>
+                    <p className="text-gray-200">• <strong>Nguyên nhân:</strong> Chế độ tư hữu, phân công lao động bất hợp lý</p>
+                    <p className="text-gray-200">• <strong>Biểu hiện:</strong> Con người bị chi phối bởi sản phẩm mình tạo ra</p>
                   </div>
                 </div>
 
-                {/* Section 3 */}
-                <div className="group bg-gradient-to-br from-green-900/20 to-green-800/20 p-6 rounded-xl border border-green-700/30 hover:border-green-500 transition-all duration-300">
-                  <div className="flex items-start mb-4">
-                    <div className="w-10 h-10 bg-green-600 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 group-hover:scale-110 transition-transform">
-                      <span className="text-white font-bold text-xl">3</span>
-                    </div>
-                    <h3 className="text-2xl font-bold text-green-300">Giải phóng con người</h3>
-                  </div>
-                  <div className="grid md:grid-cols-3 gap-4 ml-14">
-                    <div className="bg-green-950/50 p-4 rounded-lg text-center">
-                      <div className="text-3xl mb-2">🎯</div>
-                      <p className="text-green-200 font-semibold mb-2">Mục tiêu</p>
-                      <p className="text-gray-300 text-sm">Giải phóng khỏi áp bức, bóc lột</p>
-                    </div>
-                    <div className="bg-green-950/50 p-4 rounded-lg text-center">
-                      <div className="text-3xl mb-2">🛤️</div>
-                      <p className="text-green-200 font-semibold mb-2">Con đường</p>
-                      <p className="text-gray-300 text-sm">Cách mạng xã hội, xây dựng CNXH</p>
-                    </div>
-                    <div className="bg-green-950/50 p-4 rounded-lg text-center">
-                      <div className="text-3xl mb-2">✨</div>
-                      <p className="text-green-200 font-semibold mb-2">Ý nghĩa</p>
-                      <p className="text-gray-300 text-sm">Phát triển toàn diện, tự do</p>
-                    </div>
+                <div className="bg-gradient-to-br from-green-900/20 to-green-800/20 p-6 rounded-xl border border-green-700/30">
+                  <h3 className="text-2xl font-bold text-green-300 mb-4">3. Giải phóng con người</h3>
+                  <div className="space-y-3 ml-4">
+                    <p className="text-gray-200">• <strong>Mục tiêu:</strong> Giải phóng khỏi áp bức, bóc lột</p>
+                    <p className="text-gray-200">• <strong>Con đường:</strong> Cách mạng xã hội, xây dựng CNXH</p>
+                    <p className="text-gray-200">• <strong>Ý nghĩa:</strong> Phát triển toàn diện, tự do sáng tạo</p>
                   </div>
                 </div>
-              </div>
-
-              <div className="mt-8 bg-gray-800/50 rounded-xl p-6 border border-gray-700/50">
-                <p className="text-gray-300 text-sm flex items-center">
-                  <span className="text-2xl mr-3">📚</span>
-                  <span><strong className="text-yellow-400">Tài liệu tham khảo:</strong> Giáo trình Triết học Mác - Lênin (2021), trang 447-464</span>
-                </p>
               </div>
             </div>
 
-            {/* Mini Quiz */}
+            {/* Quiz */}
             <div className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 rounded-2xl p-8 border border-purple-700/50">
-              <h3 className="text-2xl font-bold text-white mb-4 flex items-center">
-                <span className="text-3xl mr-3">🧠</span>
-                Kiểm tra kiến thức
-              </h3>
+              <h3 className="text-2xl font-bold text-white mb-4">🧠 Kiểm tra kiến thức</h3>
               <p className="text-gray-200 mb-6">{quizQuestion.question}</p>
               <div className="space-y-3">
                 {quizQuestion.options.map(option => (
                   <button
                     key={option.id}
                     onClick={() => setQuizAnswer(option.id)}
-                    className={`w-full text-left p-4 rounded-lg border transition-all duration-300 ${
+                    className={`w-full text-left p-4 rounded-lg border transition-all ${
                       quizAnswer === option.id
                         ? option.correct
-                          ? 'bg-green-600 border-green-400 text-white'
-                          : 'bg-red-600 border-red-400 text-white'
-                        : 'bg-gray-800/50 border-gray-700 text-gray-200 hover:bg-gray-700/50'
+                          ? 'bg-green-600 border-green-400'
+                          : 'bg-red-600 border-red-400'
+                        : 'bg-gray-800/50 border-gray-700 hover:bg-gray-700/50'
                     }`}
                   >
                     <span className="font-bold mr-3">{option.id.toUpperCase()}.</span>
                     {option.text}
-                    {quizAnswer === option.id && option.correct && <span className="ml-2">✓</span>}
-                    {quizAnswer === option.id && !option.correct && <span className="ml-2">✗</span>}
                   </button>
                 ))}
               </div>
-              {quizAnswer && (
-                <div className={`mt-4 p-4 rounded-lg ${
-                  quizQuestion.options.find(o => o.id === quizAnswer)?.correct
-                    ? 'bg-green-900/50 text-green-200'
-                    : 'bg-red-900/50 text-red-200'
-                }`}>
-                  {quizQuestion.options.find(o => o.id === quizAnswer)?.correct
-                    ? '🎉 Chính xác! Đây là quan điểm cốt lõi của Marx về con người.'
-                    : '💭 Chưa đúng. Hãy xem lại phần lý thuyết nhé!'}
-                </div>
-              )}
             </div>
           </div>
         )}
 
-        {/* Thực trạng */}
         {activeTab === 'reality' && (
           <div className="space-y-6 animate-slide-up">
             <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-8 border border-red-800/30">
@@ -335,105 +437,25 @@ export default function BanChatConNguoi() {
                 <h2 className="text-3xl font-bold text-white">Phân tích theo Triết học Mác - Lênin</h2>
               </div>
 
-              {/* Comparison Cards */}
-              <div className="grid md:grid-cols-2 gap-6 mb-8">
-                <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 rounded-xl p-6 border border-blue-700/50 hover:scale-105 transition-transform duration-300">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center mr-3">
-                      <Network className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="font-bold text-xl text-blue-300">Sự chuyển đổi quan hệ xã hội</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {[
-                      { from: 'Trực tiếp', to: 'Ảo (mạng xã hội)', icon: '💬' },
-                      { from: 'Tập thể', to: 'Cá nhân (từ xa)', icon: '👥' },
-                      { from: 'Vật chất', to: 'Phi vật chất', icon: '📱' },
-                      { from: 'Thực', to: 'Bản thân ảo', icon: '🎭' }
-                    ].map((item, idx) => (
-                      <div key={idx} className="flex items-center bg-blue-950/50 p-3 rounded-lg">
-                        <span className="text-2xl mr-3">{item.icon}</span>
-                        <div className="flex-1">
-                          <span className="text-gray-300">{item.from}</span>
-                          <span className="text-blue-400 mx-2">→</span>
-                          <span className="text-blue-200 font-semibold">{item.to}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-red-900/30 to-orange-900/30 rounded-xl p-6 border border-red-700/50 hover:scale-105 transition-transform duration-300">
-                  <div className="flex items-center mb-4">
-                    <div className="w-10 h-10 bg-red-600 rounded-lg flex items-center justify-center mr-3">
-                      <AlertCircle className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="font-bold text-xl text-red-300">Hệ quả có thể xảy ra</h3>
-                  </div>
-                  <div className="space-y-3">
-                    {[
-                      { text: 'Cô đơn, xa cách trong giao tiếp', icon: '😔' },
-                      { text: 'Mất kết nối cộng đồng thực', icon: '🏘️' },
-                      { text: 'Nhầm lẫn giữa thực - ảo', icon: '🌀' },
-                      { text: 'Tha hóa trong môi trường số', icon: '⚠️' }
-                    ].map((item, idx) => (
-                      <div key={idx} className="flex items-center bg-red-950/50 p-3 rounded-lg">
-                        <span className="text-2xl mr-3">{item.icon}</span>
-                        <span className="text-gray-200">{item.text}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Analysis Sections */}
               <div className="space-y-6">
                 <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 rounded-xl p-6 border-l-4 border-green-500">
-                  <h4 className="font-bold text-xl text-green-300 mb-3 flex items-center">
-                    <span className="text-2xl mr-3">✅</span>
-                    1. Bản chất con người CÓ thay đổi nhưng KHÔNG mất đi
-                  </h4>
-                  <p className="text-gray-200 leading-relaxed">
-                    Theo Mác, bản chất con người vốn là <span className="text-green-400 font-semibold">lịch sử - xã hội</span>, 
-                    nên nó luôn biến đổi theo sự phát triển của xã hội. Quan hệ xã hội số hóa là 
-                    <span className="text-green-400 font-semibold"> hình thức mới</span>, nhưng VẪN là quan hệ xã hội. 
-                    Con người vẫn tương tác, giao tiếp, lao động - chỉ là hình thức khác.
+                  <h4 className="font-bold text-xl text-green-300 mb-3">✅ 1. Bản chất con người CÓ thay đổi nhưng KHÔNG mất đi</h4>
+                  <p className="text-gray-200">
+                    Bản chất con người vẫn là "tổng hòa các mối quan hệ xã hội", chỉ là các mối quan hệ này có hình thức mới trong thời đại số.
                   </p>
                 </div>
 
                 <div className="bg-gradient-to-r from-orange-900/30 to-red-900/30 rounded-xl p-6 border-l-4 border-orange-500">
-                  <h4 className="font-bold text-xl text-orange-300 mb-3 flex items-center">
-                    <span className="text-2xl mr-3">⚠️</span>
-                    2. Nguy cơ tha hóa mới trong thời đại số
-                  </h4>
-                  <p className="text-gray-200 mb-4">
-                    <span className="text-orange-400 font-semibold">Tha hóa kỹ thuật số:</span> Con người bị chi phối bởi 
-                    thuật toán, mạng xã hội, công nghệ - tương tự như bị chi phối bởi máy móc trong thời đại công nghiệp.
+                  <h4 className="font-bold text-xl text-orange-300 mb-3">⚠️ 2. Nguy cơ tha hóa mới trong thời đại số</h4>
+                  <p className="text-gray-200">
+                    Con người bị chi phối bởi thuật toán, mạng xã hội - tương tự như bị chi phối bởi máy móc trong thời đại công nghiệp.
                   </p>
-                  <div className="grid md:grid-cols-3 gap-3">
-                    {[
-                      { icon: '📱', text: 'Nghiện công nghệ' },
-                      { icon: '⏰', text: 'Làm việc 24/7' },
-                      { icon: '🔒', text: 'Dữ liệu bị khai thác' }
-                    ].map((item, idx) => (
-                      <div key={idx} className="bg-red-950/50 p-3 rounded-lg text-center">
-                        <div className="text-2xl mb-1">{item.icon}</div>
-                        <p className="text-gray-300 text-sm">{item.text}</p>
-                      </div>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-xl p-6 border-l-4 border-purple-500">
-                  <h4 className="font-bold text-xl text-purple-300 mb-3 flex items-center">
-                    <span className="text-2xl mr-3">💪</span>
-                    3. Con người vẫn là "chủ thể" của lịch sử
-                  </h4>
-                  <p className="text-gray-200 leading-relaxed">
-                    Công nghệ do con người tạo ra, nên con người hoàn toàn có khả năng 
-                    <span className="text-purple-400 font-semibold"> định hướng, kiểm soát</span> nó. 
-                    Cần có nhận thức đúng đắn và hành động tập thể để giải phóng con người 
-                    khỏi tha hóa mới này.
+                  <h4 className="font-bold text-xl text-purple-300 mb-3">💪 3. Con người vẫn là "chủ thể" của lịch sử</h4>
+                  <p className="text-gray-200">
+                    Công nghệ do con người tạo ra, nên con người có khả năng định hướng, kiểm soát nó.
                   </p>
                 </div>
               </div>
@@ -441,7 +463,6 @@ export default function BanChatConNguoi() {
           </div>
         )}
 
-        {/* Kết luận */}
         {activeTab === 'conclusion' && (
           <div className="space-y-6 animate-slide-up">
             <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl shadow-2xl p-8 border border-red-800/30">
@@ -454,140 +475,189 @@ export default function BanChatConNguoi() {
 
               <div className="space-y-6">
                 <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border-l-4 border-green-500 p-8 rounded-r-xl">
-                  <h3 className="font-bold text-2xl text-green-300 mb-6 flex items-center">
-                    <span className="text-3xl mr-3">✅</span>
-                    Trả lời câu hỏi nghiên cứu
-                  </h3>
-                  <div className="space-y-6">
+                  <h3 className="font-bold text-2xl text-green-300 mb-6">✅ Trả lời câu hỏi nghiên cứu</h3>
+                  <div className="space-y-4">
                     <div className="bg-green-950/50 p-6 rounded-xl">
-                      <div className="flex items-start">
-                        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 mt-1">
-                          <span className="text-white font-bold">1</span>
-                        </div>
-                        <div>
-                          <p className="text-green-200 font-bold text-lg mb-2">
-                            Bản chất con người có bị biến đổi tận gốc rễ?
-                          </p>
-                          <p className="text-gray-300 leading-relaxed">
-                            → <span className="text-green-400 font-bold">KHÔNG</span>. Bản chất con người vẫn là 
-                            "tổng hòa các mối quan hệ xã hội", chỉ là các mối quan hệ này có 
-                            <span className="text-green-300"> hình thức mới</span> trong thời đại số.
-                          </p>
-                        </div>
-                      </div>
+                      <p className="text-green-200 font-bold mb-2">1. Bản chất con người có bị biến đổi tận gốc rễ?</p>
+                      <p className="text-gray-300">→ KHÔNG. Bản chất vẫn là "tổng hòa các mối quan hệ xã hội", chỉ là hình thức mới.</p>
                     </div>
-
                     <div className="bg-green-950/50 p-6 rounded-xl">
-                      <div className="flex items-start">
-                        <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center mr-4 flex-shrink-0 mt-1">
-                          <span className="text-white font-bold">2</span>
-                        </div>
-                        <div>
-                          <p className="text-green-200 font-bold text-lg mb-2">
-                            Con người có nguy cơ đánh mất bản chất?
-                          </p>
-                          <p className="text-gray-300 leading-relaxed">
-                            → <span className="text-orange-400 font-bold">CÓ</span> nguy cơ tha hóa mới, 
-                            nhưng <span className="text-green-400 font-bold">KHÔNG</span> đánh mất hoàn toàn 
-                            nếu con người tự giác và có hành động đúng đắn.
-                          </p>
-                        </div>
-                      </div>
+                      <p className="text-green-200 font-bold mb-2">2. Con người có nguy cơ đánh mất bản chất?</p>
+                      <p className="text-gray-300">→ CÓ nguy cơ tha hóa mới, nhưng KHÔNG đánh mất hoàn toàn nếu có hành động đúng đắn.</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-blue-900/30 to-cyan-900/30 rounded-xl p-8 border border-blue-700/50">
-                  <h3 className="font-bold text-2xl text-blue-300 mb-6 flex items-center">
-                    <span className="text-3xl mr-3">💡</span>
-                    Giải pháp từ Triết học Mác - Lênin
-                  </h3>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {[
-                      { 
-                        icon: '🧠', 
-                        title: 'Nâng cao nhận thức',
-                        desc: 'Hiểu đúng bản chất con người, không để công nghệ chi phối',
-                        color: 'from-blue-600 to-cyan-600'
-                      },
-                      { 
-                        icon: '⚖️', 
-                        title: 'Phát triển toàn diện',
-                        desc: 'Cân bằng giữa đời sống số và thực, kết nối cộng đồng',
-                        color: 'from-purple-600 to-pink-600'
-                      },
-                      { 
-                        icon: '🏛️', 
-                        title: 'Vai trò của xã hội',
-                        desc: 'Nhà nước quản lý công nghệ phục vụ con người',
-                        color: 'from-green-600 to-emerald-600'
-                      },
-                      { 
-                        icon: '🤝', 
-                        title: 'Hành động tập thể',
-                        desc: 'Cùng xây dựng không gian số lành mạnh, nhân văn',
-                        color: 'from-orange-600 to-red-600'
-                      }
-                    ].map((item, idx) => (
-                      <div key={idx} className="group bg-gray-800/50 p-6 rounded-xl hover:scale-105 transition-all duration-300 border border-gray-700 hover:border-blue-500">
-                        <div className={`w-14 h-14 bg-gradient-to-br ${item.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                          <span className="text-3xl">{item.icon}</span>
-                        </div>
-                        <h4 className="text-white font-bold text-lg mb-2">{item.title}</h4>
-                        <p className="text-gray-300 text-sm">{item.desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="relative bg-gradient-to-br from-red-900/40 to-orange-900/40 rounded-xl p-8 border border-red-700/50 overflow-hidden">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-3xl"></div>
-                  <div className="absolute bottom-0 left-0 w-32 h-32 bg-red-500/10 rounded-full blur-3xl"></div>
-                  <div className="relative">
-                    <div className="flex items-center mb-4">
-                      <span className="text-4xl mr-3">🎯</span>
-                      <h3 className="font-bold text-2xl text-yellow-300">Thông điệp</h3>
-                    </div>
-                    <div className="bg-black/30 p-6 rounded-xl backdrop-blur-sm">
-                      <p className="text-gray-100 leading-relaxed italic text-lg">
-                        "Công nghệ số là <span className="text-yellow-300 font-semibold">công cụ</span>, 
-                        không phải là <span className="text-red-300 font-semibold">mục đích</span>. 
-                        Con người phải là <span className="text-green-300 font-semibold">trung tâm</span>, 
-                        là <span className="text-blue-300 font-semibold">chủ thể</span> của mọi sự phát triển. 
-                        Chúng ta cần ứng dụng triết học Mác - Lênin để định hướng công nghệ 
-                        phục vụ cho sự phát triển toàn diện của con người, thay vì để con người 
-                        trở thành nô lệ của công nghệ."
-                      </p>
-                    </div>
-                  </div>
+                <div className="bg-gradient-to-r from-red-900/40 to-orange-900/40 rounded-xl p-8 border border-red-700/50">
+                  <h3 className="font-bold text-2xl text-yellow-300 mb-4">🎯 Thông điệp</h3>
+                  <p className="text-gray-100 leading-relaxed italic text-lg">
+                    "Công nghệ số là công cụ, không phải mục đích. Con người phải là trung tâm, 
+                    là chủ thể của mọi sự phát triển. Chúng ta cần ứng dụng triết học Mác - Lênin 
+                    để định hướng công nghệ phục vụ con người, thay vì để con người trở thành nô lệ của công nghệ."
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Thank you card */}
             <div className="relative bg-gradient-to-r from-red-600 via-red-500 to-orange-500 rounded-2xl p-12 text-center overflow-hidden shadow-2xl">
               <div className="absolute inset-0 bg-black/20"></div>
               <div className="relative">
                 <div className="text-6xl mb-4 animate-bounce">🎓</div>
                 <h3 className="text-4xl font-bold text-white mb-3 drop-shadow-lg">
-                  Cảm ơn mọi người đã theo dõi!
+                  Cảm ơn cô đã theo dõi!
                 </h3>
-                <p className="text-xl text-red-100 mb-2">
+                <p className="text-xl text-red-100">
                   Đề tài: Bản chất con người trong thời đại số hóa
                 </p>
-                <p className="text-red-200 text-sm">
-                  Theo góc nhìn Triết học Mác - Lênin
-                </p>
-                <div className="flex items-center justify-center space-x-2 mt-6">
-                  <div className="w-3 h-3 bg-yellow-300 rounded-full animate-pulse"></div>
-                  <div className="w-3 h-3 bg-yellow-300 rounded-full animate-pulse delay-75"></div>
-                  <div className="w-3 h-3 bg-yellow-300 rounded-full animate-pulse delay-150"></div>
-                </div>
               </div>
             </div>
           </div>
         )}
       </main>
+
+      {/* AI Chatbot Button */}
+      <button
+        onClick={() => setChatOpen(!chatOpen)}
+        className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-gradient-to-br from-purple-600 to-pink-600 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform duration-300 group"
+      >
+        {chatOpen ? (
+          <X className="w-8 h-8 text-white" />
+        ) : (
+          <>
+            <MessageCircle className="w-8 h-8 text-white" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse"></div>
+          </>
+        )}
+        <div className="absolute inset-0 bg-purple-400 rounded-full blur-xl opacity-50 group-hover:opacity-75 transition-opacity"></div>
+      </button>
+
+      {/* Chatbot Window */}
+      {chatOpen && (
+        <div className="fixed bottom-24 right-6 z-50 w-96 h-[600px] bg-gray-900 rounded-2xl shadow-2xl border border-purple-700/50 flex flex-col overflow-hidden animate-slide-up">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 p-4 flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="relative">
+                <Brain className="w-8 h-8 text-white" />
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-400 rounded-full border-2 border-purple-600"></div>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-white font-bold">Trợ lý Triết học AI</h3>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowApiInput(!showApiInput)}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+        
+            </button>
+          </div>
+
+          {/* API Key Input */}
+          {showApiInput && (
+            <div className="bg-gray-800 border-b border-gray-700 p-4 space-y-3">
+              <div>
+                <label className="text-gray-300 text-sm mb-2 block">API Key (OpenRouter)</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="sk-or-v1-..."
+                  className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none text-sm"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={saveApiKey}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  Lưu
+                </button>
+                <a
+                  href="https://openrouter.ai/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 bg-gray-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-600 transition-colors text-center"
+                >
+                  Lấy API Key
+                </a>
+              </div>
+              <p className="text-gray-400 text-xs">💡 OpenRouter miễn phí với Llama 3.1</p>
+            </div>
+          )}
+
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-950">
+            {chatMessages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[80%] rounded-2xl p-4 ${
+                    msg.role === 'user'
+                      ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white'
+                      : 'bg-gray-800 text-gray-100 border border-gray-700'
+                  }`}
+                >
+                  {msg.isTyping ? (
+                    <div className="flex items-center space-x-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>{msg.text}</span>
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Quick Questions */}
+          {chatMessages.length <= 2 && (
+            <div className="bg-gray-900 border-t border-gray-800 p-3 overflow-x-auto">
+              <div className="flex gap-2 pb-2">
+                {quickQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setInputMessage(q)}
+                    className="flex-shrink-0 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs px-3 py-2 rounded-lg border border-gray-700 transition-colors whitespace-nowrap"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Input */}
+          <div className="bg-gray-900 border-t border-gray-800 p-4">
+            <div className="flex items-center space-x-2">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                placeholder="Hỏi về triết học..."
+                disabled={isLoading}
+                className="flex-1 bg-gray-800 text-white px-4 py-3 rounded-xl border border-gray-700 focus:border-purple-500 focus:outline-none disabled:opacity-50"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={isLoading || !inputMessage.trim()}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
         @keyframes slide-up {
@@ -600,8 +670,22 @@ export default function BanChatConNguoi() {
             transform: translateY(0);
           }
         }
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px) translateX(0px);
+          }
+          25% {
+            transform: translateY(-20px) translateX(10px);
+          }
+          50% {
+            transform: translateY(-10px) translateX(-10px);
+          }
+          75% {
+            transform: translateY(-15px) translateX(5px);
+          }
+        }
         .animate-slide-up {
-          animation: slide-up 0.6s ease-out;
+          animation: slide-up 0.4s ease-out;
         }
       `}</style>
     </div>
