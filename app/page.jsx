@@ -8,10 +8,10 @@ export default function BanChatConNguoi() {
   const [quizAnswer, setQuizAnswer] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const EMBEDDED_API_KEY = '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';
   const [chatMessages, setChatMessages] = useState([
     { role: 'bot', text: 'Xin chào! Tôi là trợ lý Triết học được hỗ trợ bởi AI. Hãy hỏi tôi bất cứ điều gì! 🧠✨' }
   ]);
-  const EMBEDDED_API_KEY = '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';
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiKey, setApiKey] = useState('');
@@ -90,88 +90,84 @@ export default function BanChatConNguoi() {
 
   const quickQuestions = [
     'Triết học Mác-Lênin là gì?',
-    'So sánh Plato và Aristotle về nhận thức',
-    'Giải thích hiện sinh chủ nghĩa',
-    'Triết học phương Đông khác gì phương Tây?',
+    'Bản chất con người là gì?',
     'Bản chất con người theo các triết gia',
-    'Thuyết tương đối của Einstein có ý nghĩa triết học gì?'
   ];
 
-  // --- Thay hàm callAI cũ bằng hàm này ---
   const callAI = async (userMessage) => {
-  try {
-    const key = EMBEDDED_API_KEY?.trim();
-    if (!key) {
-      // Nếu bạn quên dán key thì bot vẫn phản hồi hướng dẫn ngắn gọn
-      return 'Bot được cấu hình.';
+    try {
+      const key = EMBEDDED_API_KEY?.trim();
+      if (!key) {
+        // Nếu bạn quên dán key thì bot vẫn phản hồi hướng dẫn ngắn gọn
+        return 'Bot chưa được cấu hình.';
+      }
+
+      // System prompt: bắt buộc trả lời NGẮN GỌN (1-2 câu) và CHỈ VỀ TRIẾT HỌC.
+      const systemPrompt = `
+        Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
+        - Chỉ trả lời các câu hỏi liên quan tới triết học (lịch sử triết học, khái niệm, lý thuyết, so sánh trường phái, giải nghĩa trích đoạn, v.v).
+        - Nếu câu hỏi không liên quan tới triết học, trả lời ngắn: "Tôi chỉ trả lời về triết học."
+        - Trả lời NGẮN GỌN: 1–2 câu (không quá 2 câu) khi hỏi về định nghĩa. Rõ ràng, súc tích, trích dẫn tên tác giả khi cần.
+        - Không kèm hướng dẫn kỹ thuật, code, link, hoặc nội dung dài dòng.
+        `;
+
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+          // không cần thêm HTTP-Referer / X-Title
+        },
+        body: JSON.stringify({
+          model: 'meta-llama/llama-4-scout:free', // giữ model cũ bạn đang dùng
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.2,
+          max_tokens: 200
+        })
+      });
+
+      if (!response.ok) {
+        // Trả lỗi súc tích
+        const err = await response.text();
+        throw new Error(`API lỗi: ${response.status} ${response.statusText} - ${err}`);
+      }
+
+      const data = await response.json();
+      // Try to read the assistant text in different possible shapes
+      let content = '';
+      if (data.choices && data.choices[0]) {
+        // openrouter style
+        content = data.choices[0].message?.content ?? data.choices[0].text ?? '';
+      } else {
+        content = data.text ?? '';
+      }
+
+      content = (content || '').toString().trim();
+      if (!content) return 'Xin lỗi, API trả về rỗng.';
+
+      // Hậu xử lý: lấy tối đa 2 câu (kết thúc bởi . ! ?)
+      // Cắt theo dấu câu. Nếu không tìm thấy dấu câu, trả nguyên content nhưng rút ngắn ký tự.
+      const sentences = content.match(/[^.!?]+[.!?]?/g) || [content];
+      const short = sentences.slice(0, 2).map(s => s.trim()).join(' ').trim();
+
+      // Nếu short vẫn quá dài (ví dụ 300+ ký tự) thì cắt xuống 200 ký tự
+      if (short.length > 300) return short.slice(0, 300).trim() + '...';
+
+      // Kiểm tra nội dung không liên quan (nếu có từ khóa rõ rệt: weather, code, price...)
+      const nonPhilosophyHints = ['weather', 'price', 'stock', 'pizza', 'github', 'api', 'install', 'how to', 'docker', 'npm', 'python'];
+      const lower = short.toLowerCase();
+      if (nonPhilosophyHints.some(h => lower.includes(h))) {
+        return 'Tôi chỉ trả lời về triết học.';
+      }
+
+      return short;
+    } catch (err) {
+      // trả lời ngắn gọn khi có lỗi
+      return `Lỗi`;
     }
-
-    // System prompt: bắt buộc trả lời NGẮN GỌN (1-2 câu) và CHỈ VỀ TRIẾT HỌC.
-    const systemPrompt = `
-Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
-- Chỉ trả lời các câu hỏi liên quan tới triết học (lịch sử triết học, khái niệm, lý thuyết, so sánh trường phái, giải nghĩa trích đoạn, v.v).
-- Nếu câu hỏi không liên quan tới triết học, trả lời ngắn: "Tôi chỉ trả lời về triết học."
-- Trả lời NGẮN GỌN: 1–2 câu (không quá 2 câu) nếu hỏi định nghĩa. Rõ ràng, súc tích, trích dẫn tên tác giả khi cần.
-- Không kèm hướng dẫn kỹ thuật, code, link, hoặc nội dung dài dòng.
-`;
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`,
-        // không cần thêm HTTP-Referer / X-Title
-      },
-      body: JSON.stringify({
-        model: 'meta-llama/llama-4-scout:free', // giữ model cũ bạn đang dùng
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage }
-        ],
-        temperature: 0.2,
-        max_tokens: 200
-      })
-    });
-
-    if (!response.ok) {
-      // Trả lỗi súc tích
-      const err = await response.text();
-      throw new Error(`API lỗi: ${response.status} ${response.statusText} - ${err}`);
-    }
-
-    const data = await response.json();
-    // Try to read the assistant text in different possible shapes
-    let content = '';
-    if (data.choices && data.choices[0]) {
-      // openrouter style
-      content = data.choices[0].message?.content ?? data.choices[0].text ?? '';
-    } else {
-      content = data.text ?? '';
-    }
-
-    content = (content || '').toString().trim();
-    if (!content) return 'Xin lỗi, API trả về rỗng.';
-
-    // Hậu xử lý: lấy tối đa 2 câu (kết thúc bởi . ! ?)
-    // Cắt theo dấu câu. Nếu không tìm thấy dấu câu, trả nguyên content nhưng rút ngắn ký tự.
-    const sentences = content.match(/[^.!?]+[.!?]?/g) || [content];
-    const short = sentences.slice(0, 2).map(s => s.trim()).join(' ').trim();
-
-    // Nếu short vẫn quá dài (ví dụ 300+ ký tự) thì cắt xuống 200 ký tự
-    if (short.length > 300) return short.slice(0, 300).trim() + '...';
-
-    // Kiểm tra nội dung không liên quan (nếu có từ khóa rõ rệt: weather, code, price...)
-    const nonPhilosophyHints = ['weather', 'price', 'stock', 'pizza', 'github', 'api', 'install', 'how to', 'docker', 'npm', 'python'];
-    const lower = short.toLowerCase();
-    if (nonPhilosophyHints.some(h => lower.includes(h))) {
-      return 'Tôi chỉ trả lời về triết học.';
-    }
-
-    return short;
-  } catch (err) {
-    // trả lời ngắn gọn khi có lỗi
-    return `Lỗi`;
-  }
   };
 
   const handleSendMessage = async () => {
@@ -549,7 +545,7 @@ Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
               onClick={() => setShowApiInput(!showApiInput)}
               className="p-2 hover:bg-white/20 rounded-lg transition-colors"
             >
-        
+              
             </button>
           </div>
 
