@@ -100,6 +100,15 @@ export default function BanChatConNguoi() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage }),
       });
+  
+      if (!response.ok) throw new Error("Lỗi gọi API nội bộ");
+  
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content ?? "Không có phản hồi.";
+    } catch (err) {
+      return `❌ ${err.message}`;
+    }
+  };
 
       // System prompt: bắt buộc trả lời NGẮN GỌN (1-2 câu) và CHỈ VỀ TRIẾT HỌC.
       const systemPrompt = `
