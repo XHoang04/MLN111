@@ -16,6 +16,10 @@
     "three": "^0.160.0",
     "lucide-react": "latest"
   },
+  overrides": {
+    "@react-three/fiber": {
+      "react": "^18.3.1",
+      "react-dom": "^18.3.1"
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
