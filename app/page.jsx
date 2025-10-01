@@ -8,6 +8,7 @@ export default function BanChatConNguoi() {
   const [quizAnswer, setQuizAnswer] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const EMBEDDED_API_KEY = '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';
   const [chatMessages, setChatMessages] = useState([
     { role: 'bot', text: 'Xin chào! Tôi là trợ lý Triết học được hỗ trợ bởi AI. Hãy hỏi tôi bất cứ điều gì! 🧠✨' }
   ]);
@@ -95,89 +96,37 @@ export default function BanChatConNguoi() {
 
   const callAI = async (userMessage) => {
     try {
+      const systemPrompt = `
+        Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
+        - Chỉ trả lời các câu hỏi liên quan tới triết học.
+        - Nếu câu hỏi không liên quan, trả lời: "Tôi chỉ trả lời về triết học."
+        - Trả lời NGẮN GỌN: 1–2 câu.
+      `;
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage }),
+        body: JSON.stringify({ message: userMessage, systemPrompt }),
       });
-  
+
       if (!response.ok) throw new Error("API nội bộ lỗi");
-  
-      const data = await response.json();  // ✅ giờ nằm trong async function
-      return data.choices?.[0]?.message?.content ?? "Không có phản hồi.";
+
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content?.trim() || "Không có phản hồi.";
     } catch (err) {
       return `❌ ${err.message}`;
     }
   };
 
-
-      // System prompt: bắt buộc trả lời NGẮN GỌN (1-2 câu) và CHỈ VỀ TRIẾT HỌC.
-      const systemPrompt = `
-        Bạn là một trợ lý TRIẾT HỌC chuyên sâu (Tiếng Việt).
-        - Chỉ trả lời các câu hỏi liên quan tới triết học (lịch sử triết học, khái niệm, lý thuyết, so sánh trường phái, giải nghĩa trích đoạn, v.v).
-        - Nếu câu hỏi không liên quan tới triết học, trả lời ngắn: "Tôi chỉ trả lời về triết học."
-        - Trả lời NGẮN GỌN: 1–2 câu (không quá 2 câu) khi hỏi về định nghĩa. Rõ ràng, súc tích, trích dẫn tên tác giả khi cần.
-        - Không kèm hướng dẫn kỹ thuật, code, link, hoặc nội dung dài dòng.
-        `;
-
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          // không cần thêm HTTP-Referer / X-Title
-        },
-        body: JSON.stringify({
-          model: 'meta-llama/llama-4-scout:free', // giữ model cũ bạn đang dùng
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
-          ],
-          temperature: 0.2,
-          max_tokens: 200
-        })
-      });
-
-      if (!response.ok) {
-        // Trả lỗi súc tích
-        const err = await response.text();
-        throw new Error(`API lỗi: ${response.status} ${response.statusText} - ${err}`);
-      }
-
-      const data = await response.json();
-      // Try to read the assistant text in different possible shapes
-      let content = '';
-      if (data.choices && data.choices[0]) {
-        // openrouter style
-        content = data.choices[0].message?.content ?? data.choices[0].text ?? '';
-      } else {
-        content = data.text ?? '';
-      }
-
-      content = (content || '').toString().trim();
-      if (!content) return 'Xin lỗi, API trả về rỗng.';
-
-      // Hậu xử lý: lấy tối đa 2 câu (kết thúc bởi . ! ?)
-      // Cắt theo dấu câu. Nếu không tìm thấy dấu câu, trả nguyên content nhưng rút ngắn ký tự.
-      const sentences = content.match(/[^.!?]+[.!?]?/g) || [content];
-      const short = sentences.slice(0, 2).map(s => s.trim()).join(' ').trim();
-
-      // Nếu short vẫn quá dài (ví dụ 300+ ký tự) thì cắt xuống 200 ký tự
-      if (short.length > 300) return short.slice(0, 300).trim() + '...';
-
-      // Kiểm tra nội dung không liên quan (nếu có từ khóa rõ rệt: weather, code, price...)
-      const nonPhilosophyHints = ['weather', 'price', 'stock', 'pizza', 'github', 'api', 'install', 'how to', 'docker', 'npm', 'python'];
-      const lower = short.toLowerCase();
-      if (nonPhilosophyHints.some(h => lower.includes(h))) {
-        return 'Tôi chỉ trả lời về triết học.';
-      }
-
-      return short;
-    } catch (err) {
-      // trả lời ngắn gọn khi có lỗi
-      return `Lỗi`;
-    }
+  const handleSend = async () => {
+    if (!input.trim()) return;
+    setMessages((prev) => [...prev, { role: "user", text: input }]);
+    setInput("");
+    const reply = await callAI(input);
+    setMessages((prev) => [...prev, { role: "bot", text: reply }]);
   };
+
+
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -352,6 +301,23 @@ export default function BanChatConNguoi() {
                   mà là tổng hòa những mối quan hệ xã hội."
                 </p>
                 <p className="text-right text-yellow-300 font-bold">— Karl Marx</p>
+              </div>
+              <div className="grid md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-blue-900/30 p-6 rounded-xl border border-blue-700/30 hover:border-blue-500/50 transition-all duration-300 hover:scale-105">
+                  <Smartphone className="w-10 h-10 text-blue-400 mb-3" />
+                  <h4 className="text-white font-bold mb-2">Giao tiếp qua màn hình</h4>
+                  <p className="text-gray-300 text-sm">Nhiều hơn gặp mặt trực tiếp</p>
+                </div>
+                <div className="bg-purple-900/30 p-6 rounded-xl border border-purple-700/30 hover:border-purple-500/50 transition-all duration-300 hover:scale-105">
+                  <Users className="w-10 h-10 text-purple-400 mb-3" />
+                  <h4 className="text-white font-bold mb-2">Lao động từ xa</h4>
+                  <p className="text-gray-300 text-sm">Thay thế làm việc tập thể</p>
+                </div>
+                <div className="bg-pink-900/30 p-6 rounded-xl border border-pink-700/30 hover:border-pink-500/50 transition-all duration-300 hover:scale-105">
+                  <Network className="w-10 h-10 text-pink-400 mb-3" />
+                  <h4 className="text-white font-bold mb-2">Phiên bản số</h4>
+                  <p className="text-gray-300 text-sm">Bản thân trên không gian mạng</p>
+                </div>
               </div>
 
               <div className="bg-gradient-to-br from-yellow-900/40 to-orange-900/40 border border-yellow-700/50 rounded-xl p-8">
