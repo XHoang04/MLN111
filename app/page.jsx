@@ -95,7 +95,7 @@ export default function BanChatConNguoi() {
 
   const callAI = async (userMessage) => {
     try {
-      const key = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+      const key = process.env.OPENROUTER_API_KEY;
       if (!key) {
         // Nếu bạn quên dán key thì bot vẫn phản hồi hướng dẫn ngắn gọn
         return 'Bot chưa được cấu hình.';
