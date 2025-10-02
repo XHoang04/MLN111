@@ -434,12 +434,7 @@ export default function BanChatConNguoi() {
                 <h3 className="text-white font-bold">Trợ lý Triết học AI</h3>
               </div>
             </div>
-            <button
-              onClick={() => setShowApiInput(!showApiInput)}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              <Settings className="w-5 h-5 text-white" />
-            </button>
+        
           </div>
 
           {/* API Key Input */}
